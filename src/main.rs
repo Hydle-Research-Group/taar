@@ -1,0 +1,114 @@
+#![no_std]
+#![no_main]
+
+use atomic_float::AtomicF32;
+use core::f32;
+use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use defmt::*;
+use embassy_executor::Spawner;
+use embassy_futures::join::join;
+use embassy_stm32::gpio::{AnyPin, Input, Level, Output, Pull, Speed};
+use embassy_stm32::peripherals::{DMA1_CH1, DMA1_CH2, USART2};
+use embassy_stm32::usart::{Config, Uart};
+use embassy_stm32::{Peri, bind_interrupts};
+use embassy_time::Timer;
+use taar::{GCodeCommand, inverse, parse};
+use {defmt_rtt as _, panic_probe as _};
+
+const BASE_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
+const SHOULDER_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microsteps * 6:1 ratio
+const ELBOW_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microsteps * 6:1 ratio
+const HAND_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
+/// Max = 90.1 degrees, Min = -90.1 degrees
+const BASE_BOUNDS: (f32, f32) = (90.1, -90.1);
+/// Max = 90.1 degrees, Min = -0.1 degrees
+const SHOULDER_BOUNDS: (f32, f32) = (90.1, -0.1);
+/// Max = 0.1 degrees, Min = -90.1 degrees
+const ELBOW_BOUNDS: (f32, f32) = (0.1, -90.1);
+/// Max = 90.1 degrees, Min = -90.1 degrees
+const HAND_BOUNDS: (f32, f32) = (90.1, -90.1);
+
+bind_interrupts!(struct Irqs {
+    USART2 => embassy_stm32::usart::InterruptHandler<USART2>;
+    DMA1_CHANNEL1 => embassy_stm32::dma::InterruptHandler<DMA1_CH1>;
+    DMA1_CHANNEL2 => embassy_stm32::dma::InterruptHandler<DMA1_CH2>;
+});
+
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    let p = embassy_stm32::init(Default::default());
+
+    let mut uart_config = Config::default();
+    uart_config.baudrate = 115200;
+
+    let mut uart = Uart::new(
+        p.USART2,
+        p.PA3,
+        p.PA2,
+        p.DMA1_CH1,
+        p.DMA1_CH2,
+        Irqs,
+        uart_config,
+    )
+    .unwrap();
+
+    loop {
+        let mut buf = [0u8; 128];
+        uart.read_until_idle(&mut buf).await.unwrap();
+
+        let mut sequence = heapless::Vec::<u8, 128>::new();
+
+        for &byte in &buf[..buf.len()] {
+            if byte == b'\r' {
+                continue;
+            }
+
+            sequence.push(byte).ok();
+        }
+
+        if let Ok(msg) = str::from_utf8(&sequence) {
+            match parse(msg) {
+                Ok(commands) => {
+                    for command in commands {
+                        match command {
+                            GCodeCommand::G4 { ms } => Timer::after_millis(ms).await,
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => {
+                    let mut buf = [0u8; 128];
+                    let s = format_no_std::show(&mut buf, format_args!("{{\"error\": \"{}\"}}", e))
+                        .unwrap();
+
+                    uart.write(s.as_bytes()).await.unwrap();
+
+                    continue;
+                }
+            }
+        } else {
+            uart.write(b"{\"error\": \"invalid UTF-8 sequence\"}")
+                .await
+                .unwrap();
+
+            continue;
+        }
+    }
+}
+
+fn in_base_bounds(angle: f32) -> bool {
+    (BASE_BOUNDS.1..BASE_BOUNDS.0).contains(&angle)
+}
+
+fn in_shoulder_bounds(angle: f32) -> bool {
+    (SHOULDER_BOUNDS.1..SHOULDER_BOUNDS.0).contains(&angle)
+}
+
+fn in_elbow_bounds(angle: f32) -> bool {
+    (ELBOW_BOUNDS.1..ELBOW_BOUNDS.0).contains(&angle)
+}
+
+fn in_hand_bounds(angle: f32) -> bool {
+    (HAND_BOUNDS.1..HAND_BOUNDS.0).contains(&angle)
+}

@@ -1,0 +1,35 @@
+[package]
+name = "taar"
+version = "0.1.0"
+description = "Robotic arm control software for the TAAR robotic arm"
+authors = ["Hydle Research Group"]
+edition = "2024"
+license = "GPL-3.0"
+repository = "https://github.com/Hydle-Research-Group/taar"
+publish = false
+
+[dependencies]
+atomic_float = "1.1.0"
+cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "1.0.1"
+defmt-rtt = "1.1.0"
+embassy-executor = { version = "0.10.0", features = [ "defmt", "platform-cortex-m", "executor-interrupt", "executor-thread"] }
+embassy-futures = { version = "0.1.2", features = [ "defmt" ] }
+embassy-stm32 = { version = "0.6.0", features = [
+    "defmt",
+    "stm32g474re",
+    "time-driver-any",
+    "memory-x",
+    "unstable-pac",
+    "exti",
+    "dual-bank",
+    "stm32-hrtim"
+] }
+embassy-time = { version = "0.5.1", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"]}
+format_no_std = "1.2.0"
+gcode = { version = "0.7.0", default-features = false }
+heapless = "0.9.3"
+micromath = "2.1.0"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+stm32-hrtim = "0.2.0"
