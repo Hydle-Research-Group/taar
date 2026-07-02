@@ -13,7 +13,10 @@ use embassy_stm32::peripherals::{DMA1_CH1, DMA1_CH2, USART2};
 use embassy_stm32::usart::{Config, Uart};
 use embassy_stm32::{Peri, bind_interrupts};
 use embassy_time::Timer;
-use taar::{GCodeCommand, inverse, parse};
+use taar::{
+    kinematics::{forward, inverse},
+    parser::{Command, parse},
+};
 use {defmt_rtt as _, panic_probe as _};
 
 const BASE_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
@@ -68,11 +71,11 @@ async fn main(spawner: Spawner) {
         }
 
         if let Ok(msg) = str::from_utf8(&sequence) {
-            match parse(msg) {
+            match parse::<1024>(msg) {
                 Ok(commands) => {
                     for command in commands {
                         match command {
-                            GCodeCommand::G4 { ms } => Timer::after_millis(ms).await,
+                            Command::G4 { ms } => Timer::after_millis(ms).await,
                             _ => {}
                         }
                     }
