@@ -1,12 +1,20 @@
 use gcode::core::{
-    BlockVisitor, CommandVisitor, ControlFlow, HasDiagnostics, Noop, Number, ProgramVisitor, Value,
+    BlockVisitor, CommandVisitor, ControlFlow, HasDiagnostics, Noop, Number, ProgramVisitor, Span,
+    Value,
 };
+
+enum Pending {
+    G(u32),
+    M(u32),
+}
 
 /// A gcode parser, where `N` defines the allocation space for commands.
 struct Parser<const N: usize> {
     commands: [Command; N],
     len: usize,
 
+    // temporary parser parts
+    current: Option<Pending>,
     x: Option<f32>,
     y: Option<f32>,
     z: Option<f32>,
@@ -21,6 +29,7 @@ impl<const N: usize> Parser<N> {
         Self {
             commands: [Command::M02; N],
             len: 0,
+            current: None,
             x: None,
             y: None,
             z: None,
@@ -28,6 +37,14 @@ impl<const N: usize> Parser<N> {
             error: None,
             diag: Noop::default(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.current = None;
+        self.x = None;
+        self.y = None;
+        self.z = None;
+        self.p = None;
     }
 }
 
@@ -63,49 +80,72 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
             _ => {}
         }
     }
+
+    fn end_command(self, span: Span) {
+        if self.0.len >= N {
+            self.0.error = Some("command allocation space full");
+
+            return;
+        }
+
+        if let Some(c) = &self.0.current {
+            match c {
+                Pending::G(g) => {
+                    self.0.commands[self.0.len] = match g {
+                        4 => Command::G4 {
+                            ms: if let Some(p) = self.0.p {
+                                p as u64
+                            } else {
+                                self.0.error = Some("missing argument 'P'");
+                                self.0.reset();
+
+                                return;
+                            },
+                        },
+                        60 => Command::G60,
+                        61 => Command::G61,
+                        92 => Command::G92 {
+                            x: self.0.x,
+                            y: self.0.y,
+                            z: self.0.z,
+                        },
+                        _ => {
+                            self.0.error = Some("unknown command");
+                            self.0.reset();
+
+                            return;
+                        }
+                    }
+                }
+                Pending::M(m) => {
+                    self.0.commands[self.0.len] = match m {
+                        2 => Command::M02,
+                        _ => {
+                            self.0.error = Some("unknown command");
+                            self.0.reset();
+
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.0.len += 1;
+        self.0.reset();
+    }
 }
 
 impl<const N: usize> BlockVisitor for BlockCounter<'_, N> {
     fn start_general_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_, N>> {
-        self.0.commands[self.0.len] = match _number.major() {
-            4 => Command::G4 {
-                ms: if let Some(p) = self.0.p {
-                    p as u64
-                } else {
-                    self.0.error = Some("missing argument 'P'");
+        self.0.current = Some(Pending::G(_number.major()));
 
-                    return ControlFlow::Break(());
-                },
-            },
-            60 => Command::G60,
-            61 => Command::G61,
-            92 => Command::G92 {
-                x: self.0.x,
-                y: self.0.y,
-                z: self.0.z,
-            },
-            _ => {
-                self.0.error = Some("unknown command");
-
-                return ControlFlow::Break(());
-            }
-        };
-
-        self.0.len += 1;
         ControlFlow::Continue(CommandCounter(&mut *self.0))
     }
 
     fn start_miscellaneous_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_, N>> {
-        self.0.commands[self.0.len] = match _number.major() {
-            2 => Command::M02,
-            _ => {
-                self.0.error = Some("unknown command");
+        self.0.current = Some(Pending::M(_number.major()));
 
-                return ControlFlow::Break(());
-            }
-        };
-
-        self.0.len += 1;
         ControlFlow::Continue(CommandCounter(&mut *self.0))
     }
 }
