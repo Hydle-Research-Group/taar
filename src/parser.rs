@@ -1,6 +1,7 @@
+use defmt::info;
 use gcode::core::{
-    BlockVisitor, CommandVisitor, ControlFlow, HasDiagnostics, Noop, Number, ProgramVisitor, Span,
-    Value,
+    BlockVisitor, CommandVisitor, ControlFlow, Diagnostics, HasDiagnostics, Noop, Number,
+    ProgramVisitor, Span, Value,
 };
 
 enum Pending {
@@ -20,8 +21,7 @@ struct Parser<const N: usize> {
     z: Option<f32>,
     p: Option<f32>,
 
-    error: Option<&'static str>,
-    diag: Noop,
+    diagnostics: ParserDiagnostics,
 }
 
 impl<const N: usize> Parser<N> {
@@ -34,8 +34,7 @@ impl<const N: usize> Parser<N> {
             y: None,
             z: None,
             p: None,
-            error: None,
-            diag: Noop::default(),
+            diagnostics: ParserDiagnostics { error: None },
         }
     }
 
@@ -50,7 +49,25 @@ impl<const N: usize> Parser<N> {
 
 impl<const N: usize> HasDiagnostics for Parser<N> {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
-        &mut self.diag
+        &mut self.diagnostics
+    }
+}
+
+struct ParserDiagnostics {
+    error: Option<&'static str>,
+}
+
+impl Diagnostics for ParserDiagnostics {
+    fn emit_unexpected(&mut self, actual: &str, expected: &[gcode::core::TokenType], span: Span) {
+        self.error = Some("unexpected token or content");
+    }
+
+    fn emit_unknown_content(&mut self, text: &str, span: Span) {
+        self.error = Some("invalid sequence or unknown content");
+    }
+
+    fn emit_parse_int_error(&mut self, value: &str, _error: core::num::ParseIntError, span: Span) {
+        self.error = Some("error parsing integer");
     }
 }
 
@@ -64,7 +81,7 @@ impl<const N: usize> ProgramVisitor for Parser<N> {
 
 impl<const N: usize> HasDiagnostics for BlockCounter<'_, N> {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
-        &mut self.0.diag
+        &mut self.0.diagnostics
     }
 }
 
@@ -83,7 +100,7 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
 
     fn end_command(self, span: Span) {
         if self.0.len >= N {
-            self.0.error = Some("command allocation space full");
+            self.0.diagnostics.error = Some("command allocation space full");
 
             return;
         }
@@ -96,7 +113,7 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
                             ms: if let Some(p) = self.0.p {
                                 p as u64
                             } else {
-                                self.0.error = Some("missing argument 'P'");
+                                self.0.diagnostics.error = Some("missing argument 'P'");
                                 self.0.reset();
 
                                 return;
@@ -110,7 +127,7 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
                             z: self.0.z,
                         },
                         _ => {
-                            self.0.error = Some("unknown command");
+                            self.0.diagnostics.error = Some("unknown command");
                             self.0.reset();
 
                             return;
@@ -121,7 +138,7 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
                     self.0.commands[self.0.len] = match m {
                         2 => Command::M02,
                         _ => {
-                            self.0.error = Some("unknown command");
+                            self.0.diagnostics.error = Some("unknown command");
                             self.0.reset();
 
                             return;
@@ -152,7 +169,7 @@ impl<const N: usize> BlockVisitor for BlockCounter<'_, N> {
 
 impl<const N: usize> HasDiagnostics for CommandCounter<'_, N> {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
-        &mut self.0.diag
+        &mut self.0.diagnostics
     }
 }
 
@@ -186,7 +203,7 @@ pub fn parse<const N: usize>(src: &str) -> Result<[Command; N], &str> {
     let mut counter: Parser<N> = Parser::new();
     gcode::core::parse(src, &mut counter);
 
-    if let Some(e) = counter.error {
+    if let Some(e) = counter.diagnostics.error {
         return Err(e);
     }
 
