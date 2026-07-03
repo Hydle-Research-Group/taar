@@ -58,32 +58,26 @@ async fn main(spawner: Spawner) {
 
     loop {
         let mut buf = [0u8; 128];
-        uart.read_until_idle(&mut buf).await.unwrap();
+        let n = uart.read_until_idle(&mut buf).await.unwrap();
 
-        let mut sequence = heapless::Vec::<u8, 128>::new();
-
-        for &byte in &buf[..buf.len()] {
-            if byte == b'\r' {
-                continue;
-            }
-
-            sequence.push(byte).ok();
-        }
-
-        if let Ok(msg) = str::from_utf8(&sequence) {
-            match parse::<1024>(msg) {
+        if let Ok(msg) = str::from_utf8(&buf[..n]) {
+            match parse::<512>(msg) {
                 Ok(commands) => {
                     for command in commands {
                         match command {
                             Command::G4 { ms } => Timer::after_millis(ms).await,
+                            Command::M02 => {
+                                break;
+                            }
                             _ => {}
                         }
                     }
                 }
                 Err(e) => {
                     let mut buf = [0u8; 128];
-                    let s = format_no_std::show(&mut buf, format_args!("{{\"error\": \"{}\"}}", e))
-                        .unwrap();
+                    let s =
+                        format_no_std::show(&mut buf, format_args!("{{\"error\": \"{}\"}}\n", e))
+                            .unwrap();
 
                     uart.write(s.as_bytes()).await.unwrap();
 
@@ -91,7 +85,7 @@ async fn main(spawner: Spawner) {
                 }
             }
         } else {
-            uart.write(b"{\"error\": \"invalid UTF-8 sequence\"}")
+            uart.write(b"{\"error\": \"invalid UTF-8 sequence\"}\n")
                 .await
                 .unwrap();
 
