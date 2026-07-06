@@ -25,12 +25,16 @@ const ELBOW_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microste
 const HAND_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
 /// Max = 90.1 degrees, Min = -90.1 degrees
 const BASE_BOUNDS: (f32, f32) = (90.1, -90.1);
-/// Max = 90.1 degrees, Min = -0.1 degrees
-const SHOULDER_BOUNDS: (f32, f32) = (90.1, -0.1);
-/// Max = 0.1 degrees, Min = -90.1 degrees
-const ELBOW_BOUNDS: (f32, f32) = (0.1, -90.1);
+/// Max = 110.1 degrees, Min = -0.1 degrees
+const SHOULDER_BOUNDS: (f32, f32) = (110.1, -0.1);
+/// Max = 0.1 degrees, Min = -110.1 degrees
+const ELBOW_BOUNDS: (f32, f32) = (0.1, -110.1);
 /// Max = 90.1 degrees, Min = -90.1 degrees
 const HAND_BOUNDS: (f32, f32) = (90.1, -90.1);
+const CURRENT_BASE_ANGLE: AtomicF32 = AtomicF32::new(0.0);
+const CURRENT_SHOULDER_ANGLE: AtomicF32 = AtomicF32::new(0.0);
+const CURRENT_ELBOW_ANGLE: AtomicF32 = AtomicF32::new(0.0);
+const CURRENT_HAND_ANGLE: AtomicF32 = AtomicF32::new(0.0);
 
 bind_interrupts!(struct Irqs {
     USART2 => embassy_stm32::usart::InterruptHandler<USART2>;
@@ -41,6 +45,8 @@ bind_interrupts!(struct Irqs {
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
+
+    spawner.spawn(update_angles().unwrap());
 
     let mut uart_config = Config::default();
     uart_config.baudrate = 115200;
@@ -94,6 +100,11 @@ async fn main(spawner: Spawner) {
     }
 }
 
+#[embassy_executor::task]
+async fn update_angles() {
+    loop {}
+}
+
 fn in_base_bounds(angle: f32) -> bool {
     (BASE_BOUNDS.1..BASE_BOUNDS.0).contains(&angle)
 }
@@ -108,4 +119,20 @@ fn in_elbow_bounds(angle: f32) -> bool {
 
 fn in_hand_bounds(angle: f32) -> bool {
     (HAND_BOUNDS.1..HAND_BOUNDS.0).contains(&angle)
+}
+
+fn get_current_base_angle() -> f32 {
+    CURRENT_BASE_ANGLE.load(Ordering::Relaxed)
+}
+
+fn get_current_shoulder_angle() -> f32 {
+    CURRENT_SHOULDER_ANGLE.load(Ordering::Relaxed)
+}
+
+fn get_current_elbow_angle() -> f32 {
+    CURRENT_ELBOW_ANGLE.load(Ordering::Relaxed)
+}
+
+fn get_current_hand_angle() -> f32 {
+    CURRENT_HAND_ANGLE.load(Ordering::Relaxed)
 }
