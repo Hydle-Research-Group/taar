@@ -23,14 +23,14 @@ const BASE_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (d
 const SHOULDER_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microsteps * 6:1 ratio
 const ELBOW_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microsteps * 6:1 ratio
 const HAND_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
-/// Max = 90.1 degrees, Min = -90.1 degrees
-const BASE_BOUNDS: (f32, f32) = (90.1, -90.1);
-/// Max = 110.1 degrees, Min = -0.1 degrees
-const SHOULDER_BOUNDS: (f32, f32) = (110.1, -0.1);
-/// Max = 0.1 degrees, Min = -110.1 degrees
-const ELBOW_BOUNDS: (f32, f32) = (0.1, -110.1);
-/// Max = 90.1 degrees, Min = -90.1 degrees
-const HAND_BOUNDS: (f32, f32) = (90.1, -90.1);
+/// Max = 90.0 degrees, Min = -90.0 degrees
+const BASE_BOUNDS: (f32, f32) = (90.0, -90.0);
+/// Max = 110.0 degrees, Min = 0.0 degrees
+const SHOULDER_BOUNDS: (f32, f32) = (110.0, 0.0);
+/// Max = 0.0 degrees, Min = -110.0 degrees
+const ELBOW_BOUNDS: (f32, f32) = (0.0, -110.0);
+/// Max = 90.0 degrees, Min = -90.0 degrees
+const HAND_BOUNDS: (f32, f32) = (90.0, -90.0);
 const CURRENT_BASE_ANGLE: AtomicF32 = AtomicF32::new(0.0);
 const CURRENT_SHOULDER_ANGLE: AtomicF32 = AtomicF32::new(0.0);
 const CURRENT_ELBOW_ANGLE: AtomicF32 = AtomicF32::new(0.0);
@@ -194,19 +194,19 @@ async fn move_hand_stepper(
 }
 
 fn in_base_bounds(angle: f32) -> bool {
-    (BASE_BOUNDS.1..BASE_BOUNDS.0).contains(&angle)
+    angle <= BASE_BOUNDS.0 && angle >= BASE_BOUNDS.1
 }
 
 fn in_shoulder_bounds(angle: f32) -> bool {
-    (SHOULDER_BOUNDS.1..SHOULDER_BOUNDS.0).contains(&angle)
+    angle <= SHOULDER_BOUNDS.0 && angle >= SHOULDER_BOUNDS.1
 }
 
 fn in_elbow_bounds(angle: f32) -> bool {
-    (ELBOW_BOUNDS.1..ELBOW_BOUNDS.0).contains(&angle)
+    angle <= ELBOW_BOUNDS.0 && angle >= ELBOW_BOUNDS.1
 }
 
 fn in_hand_bounds(angle: f32) -> bool {
-    (HAND_BOUNDS.1..HAND_BOUNDS.0).contains(&angle)
+    angle <= HAND_BOUNDS.0 && angle >= HAND_BOUNDS.1
 }
 
 fn get_current_base_angle() -> f32 {
