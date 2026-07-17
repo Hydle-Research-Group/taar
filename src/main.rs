@@ -105,6 +105,94 @@ async fn update_angles() {
     loop {}
 }
 
+async fn move_base_stepper(
+    step_pin: &mut Output<'static>,
+    dir_pin: &mut Output<'static>,
+    delay_per_step: u64,
+    angle: f32,
+) {
+    if angle < 0.0 {
+        dir_pin.set_high();
+    } else {
+        dir_pin.set_low();
+    }
+
+    let steps = angle * (BASE_STEPS_PER_REVOLUTION as f32 / 360.0);
+
+    for _ in 0..(steps.abs() as usize) {
+        step_pin.set_high();
+        Timer::after_millis(delay_per_step).await;
+        step_pin.set_low();
+        Timer::after_millis(delay_per_step).await;
+    }
+}
+
+async fn move_shoulder_stepper(
+    step_pin: &mut Output<'static>,
+    dir_pin: &mut Output<'static>,
+    delay_per_step: u64,
+    angle: f32,
+) {
+    if angle < 0.0 {
+        dir_pin.set_high();
+    } else {
+        dir_pin.set_low();
+    }
+
+    let steps = angle * (SHOULDER_STEPS_PER_REVOLUTION as f32 / 360.0);
+
+    for _ in 0..(steps.abs() as usize) {
+        step_pin.set_high();
+        Timer::after_millis(delay_per_step).await;
+        step_pin.set_low();
+        Timer::after_millis(delay_per_step).await;
+    }
+}
+
+async fn move_elbow_stepper(
+    step_pin: &mut Output<'static>,
+    dir_pin: &mut Output<'static>,
+    delay_per_step: u64,
+    angle: f32,
+) {
+    if angle < 0.0 {
+        dir_pin.set_high();
+    } else {
+        dir_pin.set_low();
+    }
+
+    let steps = angle * (ELBOW_STEPS_PER_REVOLUTION as f32 / 360.0);
+
+    for _ in 0..(steps.abs() as usize) {
+        step_pin.set_high();
+        Timer::after_millis(delay_per_step).await;
+        step_pin.set_low();
+        Timer::after_millis(delay_per_step).await;
+    }
+}
+
+async fn move_hand_stepper(
+    step_pin: &mut Output<'static>,
+    dir_pin: &mut Output<'static>,
+    delay_per_step: u64,
+    angle: f32,
+) {
+    if angle < 0.0 {
+        dir_pin.set_high();
+    } else {
+        dir_pin.set_low();
+    }
+
+    let steps = angle * (HAND_STEPS_PER_REVOLUTION as f32 / 360.0);
+
+    for _ in 0..(steps.abs() as usize) {
+        step_pin.set_high();
+        Timer::after_millis(delay_per_step).await;
+        step_pin.set_low();
+        Timer::after_millis(delay_per_step).await;
+    }
+}
+
 fn in_base_bounds(angle: f32) -> bool {
     (BASE_BOUNDS.1..BASE_BOUNDS.0).contains(&angle)
 }
