@@ -3,13 +3,12 @@
 
 use atomic_float::AtomicF32;
 use core::f32;
-use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use core::sync::atomic::Ordering;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
-use embassy_stm32::gpio::{AnyPin, Input, Level, Output, Pull, Speed};
-use embassy_stm32::peripherals::{DMA1_CH1, DMA1_CH2, USART2};
+use embassy_stm32::adc::{Adc, AdcConfig, SampleTime};
+use embassy_stm32::gpio::Output;
+use embassy_stm32::peripherals::{ADC1, DMA1_CH1, DMA1_CH2, PA0, USART2};
 use embassy_stm32::usart::{Config, Uart};
 use embassy_stm32::{Peri, bind_interrupts};
 use embassy_time::Timer;
@@ -44,9 +43,14 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_stm32::init(Default::default());
+    let mut config = embassy_stm32::Config::default();
+    config.rcc.mux.adc12sel = embassy_stm32::rcc::mux::Adcsel::SYS; // select an ADC clock
 
-    spawner.spawn(update_angles().unwrap());
+    let p = embassy_stm32::init(config);
+
+    let shoulder_adc = Adc::new(p.ADC1, AdcConfig::default());
+
+    spawner.spawn(update_angles(shoulder_adc, p.PA0).unwrap());
 
     let mut uart_config = Config::default();
     uart_config.baudrate = 115200;
@@ -101,8 +105,20 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn update_angles() {
-    loop {}
+async fn update_angles(
+    mut shoulder_adc: Adc<'static, ADC1>,
+    mut shoulder_peri: Peri<'static, PA0>,
+) {
+    const DAC_CONVERSION: f32 = 4095.0; // 12 bit DAC
+
+    loop {
+        {
+            let raw = shoulder_adc.blocking_read(&mut shoulder_peri, SampleTime::CYCLES640_5);
+            let degrees = raw as f32 * 360.0 / DAC_CONVERSION;
+
+            CURRENT_SHOULDER_ANGLE.store(degrees / 6.0, Ordering::Relaxed);
+        }
+    }
 }
 
 async fn move_base_stepper(
