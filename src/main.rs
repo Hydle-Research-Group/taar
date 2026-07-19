@@ -109,7 +109,7 @@ async fn update_angles(
     mut shoulder_adc: Adc<'static, ADC1>,
     mut shoulder_peri: Peri<'static, PA0>,
 ) {
-    const DAC_CONVERSION: f32 = 4095.0; // 12 bit DAC
+    const DAC_CONVERSION: f32 = 4095.0; // 12 bit @ 3.3V
 
     loop {
         {
