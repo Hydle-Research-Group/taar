@@ -18,6 +18,7 @@ struct Parser {
     x: Option<f32>,
     y: Option<f32>,
     z: Option<f32>,
+    a: Option<f32>,
     p: Option<f32>,
 
     diagnostics: ParserDiagnostics,
@@ -31,6 +32,7 @@ impl Parser {
             x: None,
             y: None,
             z: None,
+            a: None,
             p: None,
             diagnostics: ParserDiagnostics { error: None },
         }
@@ -41,6 +43,7 @@ impl Parser {
         self.x = None;
         self.y = None;
         self.z = None;
+        self.a = None;
         self.p = None;
     }
 }
@@ -91,6 +94,7 @@ impl<'a> CommandVisitor for CommandCounter<'a> {
             ('X', Value::Literal(v)) => self.0.x = Some(v),
             ('Y', Value::Literal(v)) => self.0.y = Some(v),
             ('Z', Value::Literal(v)) => self.0.z = Some(v),
+            ('A', Value::Literal(v)) => self.0.a = Some(v),
             ('P', Value::Literal(v)) => self.0.p = Some(v),
             _ => {}
         }
@@ -110,6 +114,12 @@ impl<'a> CommandVisitor for CommandCounter<'a> {
 
                                 return;
                             },
+                        },
+                        6 => Command::G6 {
+                            x: self.0.x,
+                            y: self.0.y,
+                            z: self.0.z,
+                            a: self.0.a,
                         },
                         60 => Command::G60,
                         61 => Command::G61,
@@ -169,6 +179,13 @@ impl HasDiagnostics for CommandCounter<'_> {
 pub enum Command {
     /// Pauses command execution for `ms` time
     G4 { ms: u64 },
+    /// Moves an individual motor a single step
+    G6 {
+        x: Option<f32>,
+        y: Option<f32>,
+        z: Option<f32>,
+        a: Option<f32>,
+    },
     /// Stores the current position in memory
     G60,
     /// Loads a previously stored position
