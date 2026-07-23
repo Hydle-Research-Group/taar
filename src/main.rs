@@ -71,18 +71,8 @@ async fn main(spawner: Spawner) {
         let n = uart.read_until_idle(&mut buf).await.unwrap();
 
         if let Ok(msg) = str::from_utf8(&buf[..n]) {
-            match parse::<512>(msg) {
-                Ok(commands) => {
-                    for command in commands {
-                        match command {
-                            Command::G4 { ms } => Timer::after_millis(ms).await,
-                            Command::M02 => {
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+            let command = match parse(msg) {
+                Ok(c) => c,
                 Err(e) => {
                     let mut buf = [0u8; 128];
                     let s =
@@ -93,7 +83,19 @@ async fn main(spawner: Spawner) {
 
                     continue;
                 }
+            };
+
+            match command {
+                Command::G4 { ms } => Timer::after_millis(ms).await,
+                Command::M02 => {
+                    uart.write(b"{\"queue\": \"quit\"}").await.unwrap();
+
+                    break;
+                }
+                _ => {}
             }
+
+            uart.write(b"{\"queue\": \"continue\"}").await.unwrap();
         } else {
             uart.write(b"{\"error\": \"invalid UTF-8 sequence\"}\n")
                 .await
