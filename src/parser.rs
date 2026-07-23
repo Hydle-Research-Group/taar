@@ -9,10 +9,9 @@ enum Pending {
     M(u32),
 }
 
-/// A gcode parser, where `N` defines the allocation space for commands.
-struct Parser<const N: usize> {
-    commands: [Command; N],
-    len: usize,
+/// A gcode parser.
+struct Parser {
+    command: Command,
 
     // temporary parser parts
     current: Option<Pending>,
@@ -24,11 +23,10 @@ struct Parser<const N: usize> {
     diagnostics: ParserDiagnostics,
 }
 
-impl<const N: usize> Parser<N> {
+impl Parser {
     pub fn new() -> Self {
         Self {
-            commands: [Command::M02; N],
-            len: 0,
+            command: Command::M02,
             current: None,
             x: None,
             y: None,
@@ -47,7 +45,7 @@ impl<const N: usize> Parser<N> {
     }
 }
 
-impl<const N: usize> HasDiagnostics for Parser<N> {
+impl HasDiagnostics for Parser {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
         &mut self.diagnostics
     }
@@ -71,23 +69,23 @@ impl Diagnostics for ParserDiagnostics {
     }
 }
 
-struct BlockCounter<'a, const N: usize>(&'a mut Parser<N>);
+struct BlockCounter<'a>(&'a mut Parser);
 
-impl<const N: usize> ProgramVisitor for Parser<N> {
-    fn start_block(&mut self) -> ControlFlow<BlockCounter<'_, N>> {
+impl ProgramVisitor for Parser {
+    fn start_block(&mut self) -> ControlFlow<BlockCounter<'_>> {
         ControlFlow::Continue(BlockCounter(&mut *self))
     }
 }
 
-impl<const N: usize> HasDiagnostics for BlockCounter<'_, N> {
+impl HasDiagnostics for BlockCounter<'_> {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
         &mut self.0.diagnostics
     }
 }
 
-struct CommandCounter<'a, const N: usize>(&'a mut Parser<N>);
+struct CommandCounter<'a>(&'a mut Parser);
 
-impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
+impl<'a> CommandVisitor for CommandCounter<'a> {
     fn argument(&mut self, letter: char, value: Value<'_>, span: gcode::core::Span) {
         match (letter, value) {
             ('X', Value::Literal(v)) => self.0.x = Some(v),
@@ -99,16 +97,10 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
     }
 
     fn end_command(self, span: Span) {
-        if self.0.len >= N {
-            self.0.diagnostics.error = Some("command allocation space full");
-
-            return;
-        }
-
         if let Some(c) = &self.0.current {
             match c {
                 Pending::G(g) => {
-                    self.0.commands[self.0.len] = match g {
+                    self.0.command = match g {
                         4 => Command::G4 {
                             ms: if let Some(p) = self.0.p {
                                 p as u64
@@ -135,7 +127,7 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
                     }
                 }
                 Pending::M(m) => {
-                    self.0.commands[self.0.len] = match m {
+                    self.0.command = match m {
                         2 => Command::M02,
                         _ => {
                             self.0.diagnostics.error = Some("unknown command");
@@ -148,26 +140,25 @@ impl<'a, const N: usize> CommandVisitor for CommandCounter<'a, N> {
             }
         }
 
-        self.0.len += 1;
         self.0.reset();
     }
 }
 
-impl<const N: usize> BlockVisitor for BlockCounter<'_, N> {
-    fn start_general_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_, N>> {
+impl BlockVisitor for BlockCounter<'_> {
+    fn start_general_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_>> {
         self.0.current = Some(Pending::G(_number.major()));
 
         ControlFlow::Continue(CommandCounter(&mut *self.0))
     }
 
-    fn start_miscellaneous_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_, N>> {
+    fn start_miscellaneous_code(&mut self, _number: Number) -> ControlFlow<CommandCounter<'_>> {
         self.0.current = Some(Pending::M(_number.major()));
 
         ControlFlow::Continue(CommandCounter(&mut *self.0))
     }
 }
 
-impl<const N: usize> HasDiagnostics for CommandCounter<'_, N> {
+impl HasDiagnostics for CommandCounter<'_> {
     fn diagnostics(&mut self) -> &mut dyn gcode::core::Diagnostics {
         &mut self.0.diagnostics
     }
@@ -192,20 +183,20 @@ pub enum Command {
     M02,
 }
 
-/// Parses a GCODE sequence into an array `N` size of [`Command`](taar::Command) objects.
+/// Parses a gcode command into a [`Command`](taar::Command) object.
 ///
-/// - `src`: the sequence to parse
+/// - `line`: the gcode line to parse
 ///
 /// # Errors
 ///
 /// This function will `Err` if the parsing fails, or a command is unknown.
-pub fn parse<const N: usize>(src: &str) -> Result<[Command; N], &str> {
-    let mut counter: Parser<N> = Parser::new();
-    gcode::core::parse(src, &mut counter);
+pub fn parse(line: &str) -> Result<Command, &str> {
+    let mut counter: Parser = Parser::new();
+    gcode::core::parse(line, &mut counter);
 
     if let Some(e) = counter.diagnostics.error {
         return Err(e);
     }
 
-    Ok(counter.commands)
+    Ok(counter.command)
 }
