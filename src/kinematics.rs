@@ -1,6 +1,6 @@
 use micromath::F32Ext;
 
-const ARM_LENGTH: f32 = 150.0;
+const ARM_LENGTH: f32 = 100.0;
 
 /// Solves the rotations for each joint, performing inverse kinematics.
 ///
