@@ -33,7 +33,7 @@ pub fn delay(
 
     // sort by the angle
     for (index, angle) in joints {
-        delays[index] = (angle / largest * shortest_delay as f32) as u64;
+        delays[index] = ((largest / angle) * shortest_delay as f32) as u64;
     }
 
     (delays[0], delays[1], delays[2], delays[3])
