@@ -2,6 +2,43 @@ use micromath::F32Ext;
 
 const ARM_LENGTH: f32 = 100.0;
 
+/// Solves the delay for each joint, calculating a consistent delay across each angle.
+///
+/// The returned value (base, shoulder, elbow, hand) is in milliseconds.
+///
+/// - `shortest_delay`: the shortest delay allowed (in milliseconds)
+/// - `base`: the base rotation (in degrees)
+/// - `shoulder`: the shoulder rotation (in degrees)
+/// - `elbow`: the elbow rotation (in degrees)
+/// - `hand`: the hand rotation (in degrees)
+pub fn delay(
+    shortest_delay: u64,
+    base: f32,
+    shoulder: f32,
+    elbow: f32,
+    hand: f32,
+) -> (u64, u64, u64, u64) {
+    let mut joints = [(0, base), (1, shoulder), (2, elbow), (3, hand)];
+
+    for i in 1..joints.len() {
+        let mut j = i;
+        while j > 0 && joints[j - 1].1 > joints[j].1 {
+            joints.swap(j - 1, j);
+            j -= 1;
+        }
+    }
+
+    let largest = joints.last().unwrap().1;
+    let mut delays = [0u64; 4];
+
+    // sort by the angle
+    for (index, angle) in joints {
+        delays[index] = (angle / largest * shortest_delay as f32) as u64;
+    }
+
+    (delays[0], delays[1], delays[2], delays[3])
+}
+
 /// Solves the rotations for each joint, performing inverse kinematics.
 ///
 /// The returned value (base, shoulder, elbow, hand) is in degrees.
