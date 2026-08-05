@@ -52,7 +52,7 @@ pub fn inverse(x: f32, y: f32, z: f32) -> (f32, f32, f32, f32) {
 
     let r = (h1.powi(2) + z.powi(2)).sqrt(); // shoulder + elbow hypotenuse
     let shoulder = z.atan2(h1) + (r / (2.0 * ARM_LENGTH)).acos();
-    let elbow = (((2.0 * ARM_LENGTH.powi(2)) - r.powi(2)) / (2.0 * ARM_LENGTH.powi(2))).acos();
+    let elbow = (1.0 - (r.powi(2) / (2.0 * ARM_LENGTH.powi(2)))).acos();
     let hand = -(shoulder + elbow); // hand is parallel to the ground
 
     (
