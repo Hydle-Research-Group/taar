@@ -24,12 +24,12 @@ const ELBOW_STEPS_PER_REVOLUTION: u32 = 200 * 8 * 6; // 200 steps/rev * microste
 const HAND_STEPS_PER_REVOLUTION: u32 = 200 * 8; // 200 steps/rev * microsteps (direct drive)
 /// Max = 90.0 degrees, Min = -90.0 degrees
 const BASE_BOUNDS: (f32, f32) = (90.0, -90.0);
-/// Max = 110.0 degrees, Min = 0.0 degrees
-const SHOULDER_BOUNDS: (f32, f32) = (110.0, 0.0);
-/// Max = 0.0 degrees, Min = -110.0 degrees
-const ELBOW_BOUNDS: (f32, f32) = (0.0, -110.0);
+/// Max = 90.0 degrees, Min = 0.0 degrees
+const SHOULDER_BOUNDS: (f32, f32) = (90.0, 0.0);
 /// Max = 90.0 degrees, Min = -90.0 degrees
-const HAND_BOUNDS: (f32, f32) = (90.0, -90.0);
+const ELBOW_BOUNDS: (f32, f32) = (90.0, -90.0);
+/// Max = 180.0 degrees, Min = -180.0 degrees
+const HAND_BOUNDS: (f32, f32) = (180.0, -180.0);
 static MOTION_TRACKER: MotionTracker = MotionTracker::new();
 const DAC_CONVERSION: f32 = 4095.0; // 12 bit @ 3.3V
 
@@ -46,25 +46,58 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(config);
 
-    let shoulder_step_pin = Output::new(
+    let en_pin = Output::new(
+        p.PC12,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::Medium,
+    );
+    let base_step_pin = Output::new(
         p.PC9,
         embassy_stm32::gpio::Level::Low,
         embassy_stm32::gpio::Speed::VeryHigh,
     );
-    let shoulder_dir_pin = Output::new(
+    let base_dir_pin = Output::new(
         p.PC8,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::Medium,
+    );
+    let shoulder_step_pin = Output::new(
+        p.PB8,
         embassy_stm32::gpio::Level::Low,
         embassy_stm32::gpio::Speed::VeryHigh,
     );
-    let shoulder_en_pin = Output::new(
-        p.PB8,
+    let shoulder_dir_pin = Output::new(
+        p.PC6,
         embassy_stm32::gpio::Level::Low,
         embassy_stm32::gpio::Speed::Medium,
+    );
+    let elbow_step_pin = Output::new(
+        p.PB9,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::VeryHigh,
+    );
+    let elbow_dir_pin = Output::new(
+        p.PC5,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::Medium,
+    );
+    let hand_step_pin = Output::new(
+        p.PC10,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::VeryHigh,
+    );
+    let hand_dir_pin = Output::new(
+        p.PC11,
+        embassy_stm32::gpio::Level::Low,
+        embassy_stm32::gpio::Speed::VeryHigh, // high-speed due to constant looping
     );
     let hand_adc = Adc::new(p.ADC1, AdcConfig::default());
 
     spawner.spawn(update_hand_angle(hand_adc, p.PA0).unwrap());
+    spawner.spawn(move_base_stepper(base_step_pin, base_dir_pin).unwrap());
     spawner.spawn(move_shoulder_stepper(shoulder_step_pin, shoulder_dir_pin).unwrap());
+    spawner.spawn(move_elbow_stepper(elbow_step_pin, elbow_dir_pin).unwrap());
+    spawner.spawn(move_hand_stepper(hand_step_pin, hand_dir_pin).unwrap());
 
     let mut uart_config = Config::default();
     uart_config.baudrate = 115200;
@@ -159,9 +192,8 @@ async fn update_hand_angle(
     loop {
         let raw = shoulder_adc.blocking_read(&mut shoulder_peri, SampleTime::CYCLES640_5);
         let angle = raw as f32 * 360.0 / DAC_CONVERSION;
-        let output_angle = angle / 6.0;
 
-        MOTION_TRACKER.set_hand_angle(output_angle);
+        MOTION_TRACKER.set_hand_angle(angle);
 
         info!("Output angle: {}", &MOTION_TRACKER.get_hand_angle());
 
@@ -173,6 +205,13 @@ async fn update_hand_angle(
 async fn move_base_stepper(mut step_pin: Output<'static>, mut dir_pin: Output<'static>) {
     loop {
         let (target, delay) = MOTION_TRACKER.get_target(MotionTarget::Base);
+        let current = MOTION_TRACKER.get_base_angle();
+        let error = shortest_angle(target, current);
+
+        if error.abs() < 0.2 {
+            yield_now().await;
+            continue;
+        }
 
         if target < 0.0 {
             dir_pin.set_high();
@@ -199,6 +238,13 @@ async fn move_base_stepper(mut step_pin: Output<'static>, mut dir_pin: Output<'s
 async fn move_shoulder_stepper(mut step_pin: Output<'static>, mut dir_pin: Output<'static>) {
     loop {
         let (target, delay) = MOTION_TRACKER.get_target(MotionTarget::Shoulder);
+        let current = MOTION_TRACKER.get_shoulder_angle();
+        let error = shortest_angle(target, current);
+
+        if error.abs() < 0.2 {
+            yield_now().await;
+            continue;
+        }
 
         if target < 0.0 {
             dir_pin.set_high();
@@ -225,6 +271,13 @@ async fn move_shoulder_stepper(mut step_pin: Output<'static>, mut dir_pin: Outpu
 async fn move_elbow_stepper(mut step_pin: Output<'static>, mut dir_pin: Output<'static>) {
     loop {
         let (target, delay) = MOTION_TRACKER.get_target(MotionTarget::Elbow);
+        let current = MOTION_TRACKER.get_elbow_angle();
+        let error = shortest_angle(target, current);
+
+        if error.abs() < 0.2 {
+            yield_now().await;
+            continue;
+        }
 
         if target < 0.0 {
             dir_pin.set_high();
