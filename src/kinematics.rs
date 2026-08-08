@@ -36,7 +36,7 @@ pub fn delay(
         delays[index] = ((largest / angle) * shortest_delay as f32) as u64;
     }
 
-    (delays[0], delays[1], delays[2], delays[3])
+    (delays[0] * 12, delays[1], delays[2], delays[3] * 12) // account for shoulder/elbow ratios (6 * 2 delays)
 }
 
 /// Solves the rotations for each joint, performing inverse kinematics.
