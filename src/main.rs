@@ -192,25 +192,29 @@ async fn update_shoulder_angle(
     }
 }
 
-async fn move_base_stepper(
-    step_pin: &mut Output<'static>,
-    dir_pin: &mut Output<'static>,
-    delay_per_step: u64,
-    angle: f32,
-) {
-    if angle < 0.0 {
-        dir_pin.set_high();
-    } else {
-        dir_pin.set_low();
-    }
+#[embassy_executor::task]
+async fn move_base_stepper(mut step_pin: Output<'static>, mut dir_pin: Output<'static>) {
+    loop {
+        let (target, delay) = MOTION_TRACKER.get_target(MotionTarget::Base);
 
-    let steps = angle * (BASE_STEPS_PER_REVOLUTION as f32 / 360.0);
+        if target < 0.0 {
+            dir_pin.set_high();
+        } else {
+            dir_pin.set_low();
+        }
 
-    for _ in 0..(steps.abs() as usize) {
-        step_pin.set_high();
-        Timer::after_millis(delay_per_step).await;
-        step_pin.set_low();
-        Timer::after_millis(delay_per_step).await;
+        let steps = target * (BASE_STEPS_PER_REVOLUTION as f32 / 360.0);
+
+        for _ in 0..(steps.abs() as usize) {
+            step_pin.set_high();
+            Timer::after_millis(delay).await;
+            step_pin.set_low();
+            Timer::after_millis(delay).await;
+        }
+
+        MOTION_TRACKER.set_base_angle(target);
+
+        yield_now().await;
     }
 }
 
